@@ -13,6 +13,13 @@
 						"type": "DatasetReference"
 					},
 					"name": "source1"
+				},
+				{
+					"dataset": {
+						"referenceName": "dw_silver_pacientes_sql",
+						"type": "DatasetReference"
+					},
+					"name": "srcPacientes"
 				}
 			],
 			"sinks": [
@@ -39,6 +46,9 @@
 				},
 				{
 					"name": "select1"
+				},
+				{
+					"name": "exists1"
 				}
 			],
 			"scriptLines": [
@@ -54,6 +64,20 @@
 				"     validateSchema: false,",
 				"     isolationLevel: 'READ_UNCOMMITTED',",
 				"     format: 'table') ~> source1",
+				"source(output(",
+				"          patient_id as string,",
+				"          full_name as string,",
+				"          gender as string,",
+				"          date_of_birth as string,",
+				"          phone as string,",
+				"          email as string,",
+				"          address as string,",
+				"          insurance_provider as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcPacientes",
 				"source1 derive(admission_id = toInteger(trim(admission_id)),",
 				"          patient_id = toInteger(trim(patient_id)),",
 				"          attending_doctor_id = toInteger(trim(attending_doctor_id)),",
@@ -83,7 +107,7 @@
 				"  initCap(trim(department))\r",
 				")) ~> derivedColumn1",
 				"derivedColumn1 filter(!isNull(admission_id) && !isNull(patient_id) && !isNull(admission_date) && !isNull(department) && !isNull(attending_doctor_id) && (isNull(discharge_date) || discharge_date >= admission_date)) ~> filter1",
-				"filter1 window(over(admission_id),",
+				"exists1 window(over(admission_id),",
 				"     asc(admission_date, true),",
 				"     rn = rowNumber()) ~> window1",
 				"window1 filter(rn == 1) ~> filter2",
@@ -97,6 +121,9 @@
 				"     ),",
 				"     skipDuplicateMapInputs: true,",
 				"     skipDuplicateMapOutputs: true) ~> select1",
+				"filter1, srcPacientes exists(derivedColumn1@patient_id == toInteger(srcPacientes@patient_id),",
+				"     negate:false,",
+				"     broadcast: 'auto')~> exists1",
 				"select1 sink(allowSchemaDrift: true,",
 				"     validateSchema: false,",
 				"     input(",
