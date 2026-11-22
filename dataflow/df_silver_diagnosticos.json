@@ -13,6 +13,13 @@
 						"type": "DatasetReference"
 					},
 					"name": "source1"
+				},
+				{
+					"dataset": {
+						"referenceName": "dw_silver_admisiones_sql",
+						"type": "DatasetReference"
+					},
+					"name": "srcAdmisiones"
 				}
 			],
 			"sinks": [
@@ -51,6 +58,9 @@
 				},
 				{
 					"name": "select1"
+				},
+				{
+					"name": "exists1"
 				}
 			],
 			"scriptLines": [
@@ -65,6 +75,18 @@
 				"     validateSchema: false,",
 				"     isolationLevel: 'READ_UNCOMMITTED',",
 				"     format: 'table') ~> source1",
+				"source(output(",
+				"          admission_id as string,",
+				"          patient_id as string,",
+				"          admission_date as string,",
+				"          discharge_date as string,",
+				"          department as string,",
+				"          attending_doctor_id as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcAdmisiones",
 				"source1 derive(diagnosis_id = toInteger(trim(diagnosis_id)),",
 				"          admission_id = toInteger(trim(admission_id)),",
 				"          icd_code = upper(replace(replace(trim(icd_code), ' ', ''), '-', '.')),",
@@ -87,7 +109,7 @@
 				"    icd_code_single)) ~> derivedColumn3",
 				"derivedColumn3 filter(!isNull(diagnosis_id) && !isNull(admission_id) && !isNull(icd_code_single) && icd_code_single != '') ~> filter1",
 				"filter1 derive(icd_code = split(icd_code, ',')[1]) ~> derivedColumn4",
-				"derivedColumn4 window(over(diagnosis_id),",
+				"exists1 window(over(diagnosis_id),",
 				"     asc(diagnosis_id, true),",
 				"     rn = rowNumber()) ~> window1",
 				"window1 filter(rn==1) ~> filter2",
@@ -100,6 +122,9 @@
 				"     ),",
 				"     skipDuplicateMapInputs: true,",
 				"     skipDuplicateMapOutputs: true) ~> select1",
+				"derivedColumn4, srcAdmisiones exists(flatten1@admission_id== toInteger(srcAdmisiones@admission_id),",
+				"     negate:false,",
+				"     broadcast: 'auto')~> exists1",
 				"select1 sink(allowSchemaDrift: true,",
 				"     validateSchema: false,",
 				"     input(",
