@@ -1,5 +1,5 @@
 {
-	"name": "gold_dim_facturacion",
+	"name": "gold_fact_facturacion",
 	"properties": {
 		"linkedServiceName": {
 			"referenceName": "ls_sql_dw_hospital",

@@ -1,5 +1,5 @@
 {
-	"name": "gold_dim_admisiones",
+	"name": "gold_fact_admisiones",
 	"properties": {
 		"linkedServiceName": {
 			"referenceName": "ls_sql_dw_hospital",

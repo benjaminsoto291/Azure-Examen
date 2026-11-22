@@ -18,7 +18,7 @@
 			"sinks": [
 				{
 					"dataset": {
-						"referenceName": "bronze_facturacion_sql",
+						"referenceName": "dw_silver_facturacion_sql",
 						"type": "DatasetReference"
 					},
 					"name": "sink1"
