@@ -1,0 +1,123 @@
+{
+	"name": "df_silver_diagnosticos",
+	"properties": {
+		"folder": {
+			"name": "Silver"
+		},
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "bronze_diagnosticos_sql",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "dw_silver_diagnosticos_sql",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "derivedColumn2"
+				},
+				{
+					"name": "flatten1"
+				},
+				{
+					"name": "derivedColumn3"
+				},
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "derivedColumn4"
+				},
+				{
+					"name": "window1"
+				},
+				{
+					"name": "filter2"
+				},
+				{
+					"name": "select1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          diagnosis_id as string,",
+				"          admission_id as string,",
+				"          icd_code as string,",
+				"          diagnosis_description as string,",
+				"          severity as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source1",
+				"source1 derive(diagnosis_id = toInteger(trim(diagnosis_id)),",
+				"          admission_id = toInteger(trim(admission_id)),",
+				"          icd_code = upper(replace(replace(trim(icd_code), ' ', ''), '-', '.')),",
+				"          severity = case(   isNull(severity) || trim(severity) == '', 'Unknown',   lower(trim(severity)) == 'mild',     'Mild',   lower(trim(severity)) == 'moderate', 'Moderate',   lower(trim(severity)) == 'severe',   'Severe',   lower(trim(severity)) == 'critical', 'Critical',   'Unknown' ),",
+				"          diagnosis_description = iif(isNull(diagnosis_description) || trim(diagnosis_description) == '', 'Sin descripcion', trim(diagnosis_description))) ~> derivedColumn1",
+				"derivedColumn1 derive(codes = split(icd_code, ',')) ~> derivedColumn2",
+				"derivedColumn2 foldDown(unroll(codes, codes),",
+				"     mapColumn(",
+				"          diagnosis_id,",
+				"          admission_id,",
+				"          icd_code,",
+				"          diagnosis_description,",
+				"          severity,",
+				"          icd_code_single = codes",
+				"     ),",
+				"     skipDuplicateMapInputs: false,",
+				"     skipDuplicateMapOutputs: false) ~> flatten1",
+				"flatten1 derive(icd_code_single = iif(instr(icd_code_single, '.') == 0 && length(icd_code_single) > 3,\r",
+				"    concat(substring(icd_code_single, 1, 3), '.', substring(icd_code_single, 4)),\r",
+				"    icd_code_single)) ~> derivedColumn3",
+				"derivedColumn3 filter(!isNull(diagnosis_id) && !isNull(admission_id) && !isNull(icd_code_single) && icd_code_single != '') ~> filter1",
+				"filter1 derive(icd_code = split(icd_code, ',')[1]) ~> derivedColumn4",
+				"derivedColumn4 window(over(diagnosis_id),",
+				"     asc(diagnosis_id, true),",
+				"     rn = rowNumber()) ~> window1",
+				"window1 filter(rn==1) ~> filter2",
+				"filter2 select(mapColumn(",
+				"          diagnosis_id,",
+				"          admission_id,",
+				"          icd_code,",
+				"          diagnosis_description,",
+				"          severity",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select1",
+				"select1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          diagnostico_key as integer,",
+				"          codigo_icd as string,",
+				"          descripcion_patologia as string,",
+				"          nivel_severidad as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     truncate:true,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError') ~> sink1"
+			]
+		}
+	}
+}

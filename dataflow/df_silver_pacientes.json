@@ -1,0 +1,117 @@
+{
+	"name": "df_silver_pacientes",
+	"properties": {
+		"folder": {
+			"name": "Silver"
+		},
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "bronze_pacientes_sql",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "dw_silver_pacientes_sql",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "window1"
+				},
+				{
+					"name": "filter2"
+				},
+				{
+					"name": "select1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          patient_id as string,",
+				"          full_name as string,",
+				"          gender as string,",
+				"          date_of_birth as string,",
+				"          phone as string,",
+				"          email as string,",
+				"          address as string,",
+				"          insurance_provider as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source1",
+				"source1 derive(patient_id = toInteger(trim(patient_id)),",
+				"          full_name = initCap(regexReplace(trim(full_name), '\\\\s+', ' ')),",
+				"          gender = case(   isNull(gender), 'Unknown',   lower(trim(gender)) == 'm' || lower(trim(gender)) == 'male', 'Male',   lower(trim(gender)) == 'f' || lower(trim(gender)) == 'female', 'Female',   'Unknown' ),",
+				"          date_of_birth = case(   regexMatch(trim(date_of_birth), '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),     toDate(trim(date_of_birth), 'yyyy-MM-dd'),   regexMatch(trim(date_of_birth), '^[0-9]{2}-[A-Za-z]{3}-[0-9]{4}$'),     toDate(trim(date_of_birth), 'dd-MMM-yyyy'),   regexMatch(trim(date_of_birth), '^[0-9]{2}-[0-9]{2}-[0-9]{2}$'),     toDate(concat(substring(trim(date_of_birth), 1, 6),         iif(toInteger(substring(trim(date_of_birth), 7, 2)) > 26, '19', '20'),         substring(trim(date_of_birth), 7, 2)), 'MM-dd-yyyy'),   regexMatch(trim(date_of_birth), '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'),     toDate(trim(date_of_birth), 'MM/dd/yyyy'),   toDate(null()) ),",
+				"          phone = iif(isNull(phone) || lower(trim(phone)) == 'unknown' || length(regexReplace(phone, '[^0-9]', '')) < 10,     toString(null()),     right(regexReplace(phone, '[^0-9]', ''), 10)),",
+				"          email = iif(isNull(email) || upper(trim(email)) == 'NULL' || !regexMatch(trim(email), '^[^@\\\\s]+@[^@\\\\s]+\\\\.[^@\\\\s]+$'),     toString(null()),     lower(trim(email))),",
+				"          address = iif(isNull(address) || upper(trim(address)) == 'NULL', 'Sin direccion', regexReplace(trim(address), '\\\\s+', ' ')),",
+				"          insurance_provider = case(\r",
+				"  isNull(insurance_provider) || trim(insurance_provider) == '', 'Self Pay',\r",
+				"  instr(lower(insurance_provider), 'medicare') > 0, 'Medicare',\r",
+				"  instr(lower(insurance_provider), 'medicaid') > 0, 'Medicaid',\r",
+				"  instr(lower(insurance_provider), 'cigna') > 0, 'Cigna',\r",
+				"  instr(lower(insurance_provider), 'blue') > 0, 'Blue Cross',\r",
+				"  instr(lower(insurance_provider), 'aetna') > 0, 'Aetna',\r",
+				"  instr(lower(insurance_provider), 'uhc') > 0 || instr(lower(insurance_provider), 'united') > 0, 'UnitedHealthcare',\r",
+				"  instr(lower(insurance_provider), 'self') > 0, 'Self Pay',\r",
+				"  initCap(trim(insurance_provider))\r",
+				")) ~> derivedColumn1",
+				"derivedColumn1 filter(!isNull(patient_id) && !isNull(full_name) && trim(full_name) != '') ~> filter1",
+				"filter1 window(over(patient_id),",
+				"     asc(patient_id, true),",
+				"     rn = rowNumber()) ~> window1",
+				"window1 filter(rn == 1) ~> filter2",
+				"filter2 select(mapColumn(",
+				"          patient_id,",
+				"          full_name,",
+				"          gender,",
+				"          date_of_birth,",
+				"          phone,",
+				"          email,",
+				"          address,",
+				"          insurance_provider",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select1",
+				"select1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          patient_id as string,",
+				"          full_name as string,",
+				"          gender as string,",
+				"          date_of_birth as string,",
+				"          phone as string,",
+				"          email as string,",
+				"          address as string,",
+				"          insurance_provider as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError') ~> sink1"
+			]
+		}
+	}
+}

@@ -1,0 +1,121 @@
+{
+	"name": "df_silver_admisiones",
+	"properties": {
+		"folder": {
+			"name": "Silver"
+		},
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "bronze_admisiones_sql",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "dw_silver_admisiones_sql",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "window1"
+				},
+				{
+					"name": "filter2"
+				},
+				{
+					"name": "select1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          admission_id as string,",
+				"          patient_id as string,",
+				"          admission_date as string,",
+				"          discharge_date as string,",
+				"          department as string,",
+				"          attending_doctor_id as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> source1",
+				"source1 derive(admission_id = toInteger(trim(admission_id)),",
+				"          patient_id = toInteger(trim(patient_id)),",
+				"          attending_doctor_id = toInteger(trim(attending_doctor_id)),",
+				"          admission_date = case(\r",
+				"  regexMatch(trim(admission_date), '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'), toDate(trim(admission_date), 'yyyy-MM-dd'),\r",
+				"  regexMatch(trim(admission_date), '^[0-9]{2}-[0-9]{2}-[0-9]{2}$'), toDate(trim(admission_date), 'MM-dd-yy'),\r",
+				"  regexMatch(trim(admission_date), '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'), toDate(trim(admission_date), 'MM/dd/yyyy'),\r",
+				"  regexMatch(trim(admission_date), '^[0-9]{2}-[A-Za-z]{3}-[0-9]{4}$'), toDate(trim(admission_date), 'dd-MMM-yyyy'),\r",
+				"  regexMatch(trim(admission_date), '^[A-Za-z]+ [0-9]{2}, [0-9]{4}$'), toDate(trim(admission_date), 'MMMM dd, yyyy'),\r",
+				"  toDate(null())\r",
+				"),",
+				"          discharge_date = case(\r",
+				"  regexMatch(trim(discharge_date), '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'), toDate(trim(discharge_date), 'yyyy-MM-dd'),\r",
+				"  regexMatch(trim(discharge_date), '^[0-9]{2}-[0-9]{2}-[0-9]{2}$'), toDate(trim(discharge_date), 'MM-dd-yy'),\r",
+				"  regexMatch(trim(discharge_date), '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'), toDate(trim(discharge_date), 'MM/dd/yyyy'),\r",
+				"  regexMatch(trim(discharge_date), '^[0-9]{2}-[A-Za-z]{3}-[0-9]{4}$'), toDate(trim(discharge_date), 'dd-MMM-yyyy'),\r",
+				"  regexMatch(trim(discharge_date), '^[A-Za-z]+ [0-9]{2}, [0-9]{4}$'), toDate(trim(discharge_date), 'MMMM dd, yyyy'),\r",
+				"  toDate(null())\r",
+				"),",
+				"          department = case(\r",
+				"  startsWith(lower(trim(department)), 'onc'),   'Oncology',\r",
+				"  startsWith(lower(trim(department)), 'card'),  'Cardiology',\r",
+				"  startsWith(lower(trim(department)), 'emerg') || lower(trim(department)) == 'er', 'Emergency',\r",
+				"  startsWith(lower(trim(department)), 'paed') || startsWith(lower(trim(department)), 'ped'), 'Pediatrics',\r",
+				"  startsWith(lower(trim(department)), 'gen'),   'General Surgery',\r",
+				"  startsWith(lower(trim(department)), 'neuro'), 'Neurology',\r",
+				"  initCap(trim(department))\r",
+				")) ~> derivedColumn1",
+				"derivedColumn1 filter(!isNull(admission_id) && !isNull(patient_id) && !isNull(admission_date) && !isNull(department) && !isNull(attending_doctor_id) && (isNull(discharge_date) || discharge_date >= admission_date)) ~> filter1",
+				"filter1 window(over(admission_id),",
+				"     asc(admission_date, true),",
+				"     rn = rowNumber()) ~> window1",
+				"window1 filter(rn == 1) ~> filter2",
+				"filter2 select(mapColumn(",
+				"          admission_id,",
+				"          patient_id,",
+				"          admission_date,",
+				"          discharge_date,",
+				"          department,",
+				"          attending_doctor_id",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select1",
+				"select1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          admission_id as string,",
+				"          patient_id as string,",
+				"          admission_date as string,",
+				"          discharge_date as string,",
+				"          department as string,",
+				"          attending_doctor_id as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError') ~> sink1"
+			]
+		}
+	}
+}
