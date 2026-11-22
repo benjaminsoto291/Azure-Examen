@@ -12,20 +12,25 @@
 		"type": "AzureSqlTable",
 		"schema": [
 			{
-				"name": "diagnostico_key",
+				"name": "diagnosis_id",
 				"type": "int",
 				"precision": 10
 			},
 			{
-				"name": "codigo_icd",
+				"name": "admission_id",
+				"type": "int",
+				"precision": 10
+			},
+			{
+				"name": "icd_code",
 				"type": "varchar"
 			},
 			{
-				"name": "descripcion_patologia",
+				"name": "diagnosis_description",
 				"type": "nvarchar"
 			},
 			{
-				"name": "nivel_severidad",
+				"name": "severity",
 				"type": "varchar"
 			}
 		],

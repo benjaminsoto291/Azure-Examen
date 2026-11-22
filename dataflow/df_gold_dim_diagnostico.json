@@ -1,0 +1,90 @@
+{
+	"name": "df_gold_dim_diagnostico",
+	"properties": {
+		"folder": {
+			"name": "Gold"
+		},
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "dw_silver_diagnosticos_sql",
+						"type": "DatasetReference"
+					},
+					"name": "srcDiag"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "gold_dim_diagnostico",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "aggregate1"
+				},
+				{
+					"name": "derivedColumn2"
+				},
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "select1"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          diagnosis_id as integer,",
+				"          admission_id as integer,",
+				"          icd_code as string,",
+				"          diagnosis_description as string,",
+				"          severity as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcDiag",
+				"srcDiag derive(codigo_icd = icd_code,",
+				"          descripcion_patologia = diagnosis_description,",
+				"          sev_rank = case(lower(trim(severity)) == 'critical', 4, lower(trim(severity)) == 'severe', 3, lower(trim(severity)) == 'moderate', 2, lower(trim(severity)) == 'mild', 1, 0)) ~> derivedColumn1",
+				"derivedColumn1 aggregate(groupBy(codigo_icd),",
+				"     descripcion_patologia = first(descripcion_patologia),",
+				"          max_rank = max(sev_rank)) ~> aggregate1",
+				"aggregate1 derive({severidad.txt} = case(toInteger(max_rank) == 4, 'Critical', toInteger(max_rank) == 3, 'Severe', toInteger(max_rank) == 2, 'Moderate', toInteger(max_rank) == 1, 'Mild', 'Unknown')) ~> derivedColumn2",
+				"derivedColumn2 filter(!isNull(codigo_icd) && trim(codigo_icd) != '') ~> filter1",
+				"filter1 select(mapColumn(",
+				"          codigo_icd,",
+				"          descripcion_patologia,",
+				"          nivel_severidad = {severidad.txt}",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select1",
+				"select1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          diagnostico_key as integer,",
+				"          codigo_icd as string,",
+				"          descripcion_patologia as string,",
+				"          nivel_severidad as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError') ~> sink1"
+			]
+		}
+	}
+}
