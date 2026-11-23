@@ -12,24 +12,198 @@
 						"referenceName": "dw_silver_admisiones_sql",
 						"type": "DatasetReference"
 					},
-					"name": "source1"
+					"name": "srcAdm"
+				},
+				{
+					"dataset": {
+						"referenceName": "dw_silver_diagnosticos_sql",
+						"type": "DatasetReference"
+					},
+					"name": "srcDiag"
+				},
+				{
+					"dataset": {
+						"referenceName": "gold_dim_paciente",
+						"type": "DatasetReference"
+					},
+					"name": "dimPac"
+				},
+				{
+					"dataset": {
+						"referenceName": "gold_dim_departamento",
+						"type": "DatasetReference"
+					},
+					"name": "dimDep"
+				},
+				{
+					"dataset": {
+						"referenceName": "gold_dim_diagnostico",
+						"type": "DatasetReference"
+					},
+					"name": "dimDiag"
 				}
 			],
-			"sinks": [],
-			"transformations": [],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "gold_fact_admisiones",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "window1"
+				},
+				{
+					"name": "join1"
+				},
+				{
+					"name": "filter1"
+				},
+				{
+					"name": "lookup1"
+				},
+				{
+					"name": "lookup2"
+				},
+				{
+					"name": "lookup3"
+				},
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "filter2"
+				},
+				{
+					"name": "select1"
+				}
+			],
 			"scriptLines": [
 				"source(output(",
-				"          admission_id as string,",
-				"          patient_id as string,",
-				"          admission_date as string,",
-				"          discharge_date as string,",
+				"          admission_id as integer,",
+				"          patient_id as integer,",
+				"          admission_date as date,",
+				"          discharge_date as date,",
 				"          department as string,",
-				"          attending_doctor_id as string",
+				"          attending_doctor_id as integer",
 				"     ),",
 				"     allowSchemaDrift: true,",
 				"     validateSchema: false,",
 				"     isolationLevel: 'READ_UNCOMMITTED',",
-				"     format: 'table') ~> source1"
+				"     format: 'table') ~> srcAdm",
+				"source(output(",
+				"          diagnosis_id as integer,",
+				"          admission_id as integer,",
+				"          icd_code as string,",
+				"          diagnosis_description as string,",
+				"          severity as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> srcDiag",
+				"source(output(",
+				"          paciente_key as integer,",
+				"          patient_id_bk as integer,",
+				"          nombre_completo as string,",
+				"          genero as string,",
+				"          fecha_nacimiento as date,",
+				"          rango_etario as string,",
+				"          correo_electronico as string,",
+				"          direccion as string,",
+				"          proveedor_seguro as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> dimPac",
+				"source(output(",
+				"          departamento_key as integer,",
+				"          nombre_departamento as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> dimDep",
+				"source(output(",
+				"          diagnostico_key as integer,",
+				"          codigo_icd as string,",
+				"          descripcion_patologia as string,",
+				"          nivel_severidad as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     isolationLevel: 'READ_UNCOMMITTED',",
+				"     format: 'table') ~> dimDiag",
+				"srcDiag window(over(admission_id),",
+				"     asc(diagnosis_id, true),",
+				"     rn = rowNumber()) ~> window1",
+				"srcAdm, filter1 join(srcAdm@admission_id == srcDiag@admission_id,",
+				"     joinType:'left',",
+				"     matchType:'exact',",
+				"     ignoreSpaces: false,",
+				"     broadcast: 'auto')~> join1",
+				"window1 filter(rn == 1) ~> filter1",
+				"join1, dimPac lookup(patient_id == patient_id_bk,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookup1",
+				"lookup1, dimDep lookup(department == nombre_departamento,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookup2",
+				"lookup2, dimDiag lookup(icd_code == codigo_icd,",
+				"     multiple: false,",
+				"     pickup: 'any',",
+				"     broadcast: 'auto')~> lookup3",
+				"lookup3 derive(adm_bk = srcAdm@admission_id,",
+				"          pac_key = paciente_key,",
+				"          dep_key = departamento_key,",
+				"          diag_key = coalesce(diagnostico_key, -1),",
+				"          admission_id = toInteger(replace(substring(toString(admission_date), 1, 10), '-', '')),",
+				"          f_alta_key = iif(isNull(discharge_date), toInteger(null()), toInteger(toString(discharge_date, 'yyyyMMdd'))),",
+				"          medico = attending_doctor_id,",
+				"          dias_est = iif(isNull(discharge_date), toInteger(null()), toInteger((toTimestamp(discharge_date) - toTimestamp(admission_date)) / 86400000)),",
+				"          conteo = 1) ~> derivedColumn1",
+				"derivedColumn1 filter(!isNull(pac_key) && !isNull(dep_key)) ~> filter2",
+				"filter2 select(mapColumn(",
+				"          admission_id_bk = adm_bk,",
+				"          paciente_key = pac_key,",
+				"          departamento_key = dep_key,",
+				"          diagnostico_key = diag_key,",
+				"          fecha_ingreso_key = admission_id,",
+				"          fecha_alta_key = f_alta_key,",
+				"          medico_id = medico,",
+				"          dias_estancia = dias_est,",
+				"          conteo_admisiones = conteo",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> select1",
+				"select1 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          admision_key as long,",
+				"          admission_id_bk as integer,",
+				"          paciente_key as integer,",
+				"          departamento_key as integer,",
+				"          diagnostico_key as integer,",
+				"          fecha_ingreso_key as integer,",
+				"          fecha_alta_key as integer,",
+				"          medico_id as integer,",
+				"          dias_estancia as integer,",
+				"          conteo_admisiones as integer",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError') ~> sink1"
 			]
 		}
 	}
